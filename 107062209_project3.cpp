@@ -19,7 +19,7 @@ std::array<std::array<int, SIZE>, SIZE> value = {{{200,-100,100,75,75,100,-100,2
 {200,-100,100,75,75,100,-100,200}}};
 
 struct Point {
-    int x, y;
+    int x, y, point_value;
 	Point() : Point(0, 0) {}
 	Point(float x, float y) : x(x), y(y) {}
 	bool operator==(const Point& rhs) const {
@@ -35,7 +35,7 @@ struct Point {
 		return Point(x - rhs.x, y - rhs.y);
 	}
 	int set_value(){
-        return value[this->x][this->y];
+        return point_value = value[this->x][this->y];
 	}
 };
 
@@ -44,12 +44,18 @@ std::vector<Point> next_valid_spots;
 
 class State{
 public:
+    enum SPOT_STATE {
+        EMPTY = 0,
+        BLACK = 1,
+        WHITE = 2
+    };
     std::array<std::array<int,SIZE>,SIZE> cur_board;
     int heuristic;
     int state_player = player;
     int prevx = -1;
     int prevy = -1;
     std::vector<Point> next_valid_nodes;
+    std::array<int, 3> disc_count;
     const std::array<Point, 8> directions{{
     Point(-1, -1), Point(-1, 0), Point(-1, 1),
     Point(0, -1), /*{0, 0}, */Point(0, 1),
@@ -78,11 +84,27 @@ public:
         this->prevx = newx;
         this->prevy = newy;
     }
+    void set_heuristic(int x,int y){
+        int eat_weight;
+        if(disc_count[EMPTY]>=50)
+            eat_weight = 5;
+        else if(disc_count[EMPTY]>=30)
+            eat_weight = 10;
+        else if(disc_count[EMPTY]>=10)
+            eat_weight = 25;
+        this->heuristic = value[x][y]*1 + *eat_weight;
+    }
     int get_next_player(int player) const {
         return 3 - player;
     }
     bool is_spot_on_board(Point p) const {
         return 0 <= p.x && p.x < SIZE && 0 <= p.y && p.y < SIZE;
+    }
+    int get_disc(Point p) const {
+        return board[p.x][p.y];
+    }
+    void set_disc(Point p, int disc) {
+        board[p.x][p.y] = disc;
     }
     bool is_disc_at(Point p, int disc) const {
         if (!is_spot_on_board(p))
@@ -90,9 +112,6 @@ public:
         if (cur_board[p.x][p.y] != disc)
             return false;
         return true;
-    }
-    void set_heuristic(int x,int y){
-        this->heuristic = value[x][y];
     }
     bool is_spot_valid(Point center) const {
         if (cur_board[center.x][center.y] != 0)
@@ -111,7 +130,7 @@ public:
         }
         return false;
     }
-    void get_valid_spots(){
+    std::vector<Point> get_valid_spots(){
         std::vector<Point> valid_spots;
         for (int i = 0; i < SIZE; i++) {
             for (int j = 0; j < SIZE; j++) {
@@ -122,9 +141,85 @@ public:
                     valid_spots.push_back(p);
             }
         }
-        this->next_valid_nodes = next_valid_spots;
+        this->next_valid_nodes = valid_spots;
+        return valid_spots;
     }
+
+    void flip_discs(Point center) {
+        for (Point dir: directions) {
+            // Move along the direction while testing.
+            Point p = center + dir;
+            if (!is_disc_at(p, get_next_player(state_player)))
+                continue;
+            std::vector<Point> discs({p});
+            p = p + dir;
+            while (is_spot_on_board(p) && get_disc(p) != EMPTY) {
+                if (is_disc_at(p, state_player)) {
+                    for (Point s: discs) {
+                        set_disc(s, state_player);
+                    }
+                    disc_count[state_player] += discs.size();
+                    disc_count[get_next_player(state_player)] -= discs.size();
+                    break;
+                }
+                discs.push_back(p);
+                p = p + dir;
+            }
+        }
+    }
+    void reset() {
+        for (int i = 0; i < SIZE; i++) {
+            for (int j = 0; j < SIZE; j++) {
+                board[i][j] = EMPTY;
+            }
+        }
+        board[3][4] = board[4][3] = BLACK;
+        board[3][3] = board[4][4] = WHITE;
+        state_player = BLACK;
+        disc_count[EMPTY] = 8*8-4;
+        disc_count[BLACK] = 2;
+        disc_count[WHITE] = 2;
+    }
+    std::vector<Point> get_valid_spots() const {
+        std::vector<Point> valid_spots;
+        for (int i = 0; i < SIZE; i++) {
+            for (int j = 0; j < SIZE; j++) {
+                Point p = Point(i, j);
+                if (board[i][j] != EMPTY)
+                    continue;
+                if (is_spot_valid(p))
+                    valid_spots.push_back(p);
+            }
+        }
+        return valid_spots;
+    }
+    bool put_disc(Point p) {
+        set_disc(p, state_player);
+        disc_count[state_player]++;
+        disc_count[EMPTY]--;
+        flip_discs(p);
+        // Give control to the other player.
+        state_player = get_next_player(state_player);
+        next_valid_nodes = get_valid_spots();
+        // Check Win
+        if (next_valid_spots.size() == 0) {
+            state_player = get_next_player(state_player);
+            next_valid_spots = get_valid_spots();
+            if (next_valid_spots.size() == 0) {
+                // Game ends
+                int white_discs = disc_count[WHITE];
+                int black_discs = disc_count[BLACK];
+                /*if (white_discs == black_discs) winner = EMPTY;
+                else if (black_discs > white_discs) winner = BLACK;
+                else winner = WHITE;*/
+            }
+        }
+        return true;
+    }
+
 };
+
+
 
 int minimax(State cur_state,int depth,int a,int b,int cur_player){
     int value;
@@ -187,8 +282,6 @@ void write_valid_spot(std::ofstream& fout) {
     int n_valid_spots = next_valid_spots.size();
     // Keep updating the output until getting killed.
     while (true) {
-        // Choose random spot. (Not random uniform here)
-        //int index = (rand() % n_valid_spots);
         State cur_state(board);
         Point p;
         int value = minimax(cur_state,0,250,-200,cur_state.state_player);
