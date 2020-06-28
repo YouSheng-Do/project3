@@ -11,10 +11,10 @@ const int SIZE = 8;
 
 std::array<std::array<int, SIZE>, SIZE> value = {{{200,-100,100,75,75,100,-100,200},
 {-100,-150,100,50,50,100,-150,-100},
-{100,100,100,50,50,100,100,100},
-{75,50,50,50,50,50,50,75},
-{75,50,50,50,50,50,50,75},
-{100,100,100,50,50,100,100,100},
+{100,100,100,60,60,100,100,100},
+{75,50,60,60,60,60,50,75},
+{75,50,60,60,60,60,50,75},
+{100,100,100,60,60,100,100,100},
 {-100,-150,100,50,50,100,-150,-100},
 {200,-100,100,75,75,100,-100,200}}};
 
@@ -126,7 +126,7 @@ public:
     }
 };
 
-int minimax(State cur_state,int depth,int cur_player){
+int minimax(State cur_state,int depth,int a,int b,int cur_player){
     int value;
     if(depth==3||cur_state.next_valid_nodes.size()==0){
         return cur_state.heuristic;
@@ -139,7 +139,10 @@ int minimax(State cur_state,int depth,int cur_player){
             if(next_state.heuristic>value){
                 value = next_state.heuristic;
             }
-            minimax(next_state,depth+1,3-player);
+            minimax(next_state,depth+1,a,b,3-player);
+            a = a > value ? a : value;
+            if(a>=b)
+                break;
         }
         return value;
     }
@@ -152,7 +155,9 @@ int minimax(State cur_state,int depth,int cur_player){
             if(next_state.heuristic<value){
                 value = next_state.heuristic;
             }
-            minimax(next_state,depth+1,3-cur_player);
+            minimax(next_state,depth+1,a,b,3-cur_player);
+            if(b<=a)
+                break;
         }
         return value;
     }
@@ -186,7 +191,7 @@ void write_valid_spot(std::ofstream& fout) {
         //int index = (rand() % n_valid_spots);
         State cur_state(board);
         Point p;
-        int value = minimax(cur_state,0,cur_state.state_player);
+        int value = minimax(cur_state,0,250,-200,cur_state.state_player);
         for(int i = 0;i < n_valid_spots;i++){
             if(next_valid_spots[i].set_value()==value)
                 p = next_valid_spots[i];
